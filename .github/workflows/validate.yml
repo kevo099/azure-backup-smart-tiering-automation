@@ -57,6 +57,10 @@ jobs:
         shell: bash
         run: for f in scripts/*.sh; do bash -n "$f"; done
 
+      - name: Publisher byte-preservation and upload-failure regressions
+        shell: bash
+        run: python3 -m unittest discover -s tests -p 'test_publish_runbook.py' -v
+
       - name: Documented Bash blocks parse
         shell: bash
         run: |

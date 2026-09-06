@@ -20,7 +20,7 @@ creates no spending cap or automatic teardown.
 |---|---|---|
 | 0 | Prepare Linux tools, pin source, choose subscription | Offline checks pass; account and names are correct |
 | 1–3 | Create empty fixture, publish runbook, define helpers | Published content hash matches; recovery values saved |
-| 4 | Optional audit without reader | Failed job, with its cause in the Error stream |
+| 4 | Optional audit without reader | Failed job; metadata exception or Error stream explains the initialization or authorization failure |
 | 5–6 | Prove reader readiness; seed exact empty policy; audit | One candidate, zero submitted/verified writes |
 | 7 | Optional apply with reader only | Failed write with 403; policy remains unchanged |
 | 8–9 | Grant temporary writer, apply, repeat, remove writer | One verified change; repeat writes zero; writer absent |
@@ -36,7 +36,7 @@ use [Recovery and troubleshooting](#recovery-and-troubleshooting) before repeati
 - A **Linux Bash session**, including Ubuntu under WSL on Windows. Native macOS Bash and Windows
   PowerShell are not sufficient: the role helpers read `/proc/sys/kernel/random/uuid` and use GNU
   tools. PowerShell below runs only the local harness; the command blocks themselves are Bash.
-- Git, Bash 4 or newer, `curl`, `jq`, GNU coreutils (`sha256sum` and `sort -V`), Azure CLI 2.75.0 or
+- Git, Bash 4 or newer, `curl`, `jq`, Python 3, GNU coreutils (`sha256sum` and `sort -V`), Azure CLI 2.75.0 or
   newer, Bicep, and the experimental `automation` extension version `1.0.0b2`.
 - PowerShell **7.4** locally for the offline harness. This is separate from the Azure Automation
   `PowerShell74` runtime, which the fixture creates for you. No local Az modules are required.
@@ -57,7 +57,7 @@ use [Recovery and troubleshooting](#recovery-and-troubleshooting) before repeati
 If tools are missing, first follow Microsoft's [Azure CLI installation](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli-linux)
 and [PowerShell installation](https://learn.microsoft.com/en-us/powershell/scripting/install/install-ubuntu)
 instructions for your Linux distribution; select PowerShell 7.4. On Ubuntu/WSL, the other packages
-are `git`, `curl`, `jq`, and `coreutils` (`sudo apt-get install git curl jq coreutils`).
+are `git`, `curl`, `jq`, `python3`, and `coreutils` (`sudo apt-get install git curl jq python3 coreutils`).
 
 Start a dedicated Bash shell so a failing check exits this walkthrough session. Keep your existing
 terminal open; do not enable shell tracing (`set -x`) while running authenticated commands.
@@ -76,7 +76,7 @@ umask 077
 
 test "${BASH_VERSINFO[0]}" -ge 4
 test -r /proc/sys/kernel/random/uuid
-for tool in git curl jq sha256sum sort az pwsh; do command -v "$tool"; done
+for tool in git curl jq python3 sha256sum sort az pwsh; do command -v "$tool"; done
 AZ_CLI_VERSION="$(az version --query '"azure-cli"' -o tsv)"
 test "$(printf '%s\n' 2.75.0 "$AZ_CLI_VERSION" | sort -V | head -1)" = "2.75.0"
 pwsh -NonInteractive -NoProfile -Command 'if ($PSVersionTable.PSVersion.Major -ne 7 -or $PSVersionTable.PSVersion.Minor -ne 4) { throw "Use PowerShell 7.4 for this harness" }; $PSVersionTable.PSVersion.ToString()'
@@ -95,7 +95,7 @@ cd azure-backup-smart-tiering-automation
 AUTOMATION_DIR="$(pwd)"
 cp docs/replicate-in-azure.md "$EVIDENCE_DIR/guide-used.md"
 git rev-parse HEAD > "$EVIDENCE_DIR/guide-revision.txt"
-AUTOMATION_COMMIT="1abbdcc066d58d9fb765d78fff3763ee34acf97a"
+AUTOMATION_COMMIT="03839a29b0fff02442d88a414d7ac32851d227c7"
 git checkout --detach "$AUTOMATION_COMMIT"
 test "$(git rev-parse HEAD)" = "$AUTOMATION_COMMIT"
 printf '%s\n' "$AUTOMATION_COMMIT" > "$EVIDENCE_DIR/source-revision.txt"
@@ -104,13 +104,14 @@ pwsh -NonInteractive -NoProfile -File tests/StaticValidation.ps1
 pwsh -NonInteractive -NoProfile -File tests/BehaviorHarness.ps1
 for file in scripts/*.sh; do bash -n "$file"; done
 bash tests/ReplicationGuideTrapTest.sh
+python3 -m unittest discover -s tests -p 'test_publish_runbook.py' -v
 jq empty infra/rbac/*.json
 az bicep build --file infra/test-environment.bicep --stdout > /dev/null
 ```
 
-**Checkpoint:** the static check and all 45 behavioral scenarios pass; the trap regression passes;
-Bicep and JSON validation exit successfully. A detached-HEAD notice is expected. Keep following this
-page or `$EVIDENCE_DIR/guide-used.md`: checkout pins the deployment code and also replaces on-disk
+**Checkpoint:** the static check, all 45 behavioral scenarios, the trap regression, and all eight
+publisher regressions pass; Bicep and JSON validation exit successfully. A detached-HEAD notice is
+expected. Keep following this page or `$EVIDENCE_DIR/guide-used.md`: checkout pins the deployment code and also replaces on-disk
 docs with their older versions. Do not switch to an older guide and follow its earlier source pin.
 An existing clone directory causes `git clone` to fail; choose a fresh parent directory and restart
 Step 0 instead of repurposing a working checkout.
@@ -226,6 +227,11 @@ The script discovers the Automation Account location unless `LOCATION` is explic
 must print `remote state/runtime: Published PowerShell74` and `OK: published bytes equal the local
 file`. Record the printed SHA-256 with the source commit.
 
+The pinned helper uses an exact-byte draft-content PUT and verifies the draft before publication.
+The earlier CLI `--content @file` upload removed the final newline in the
+[2026-09-06 live test](LIVE-TEST-2026-09-06.md), making the published hash differ. An `az rest --body @file`
+substitution also uses CLI file expansion; keep the corrected helper and its hash gates.
+
 ## 3. Job helpers
 
 The experimental CLI can start and inspect jobs but does not expose their output. Paste this entire
@@ -295,6 +301,12 @@ job_streams() {
     --query 'value[].{time:properties.time,type:properties.streamType,text:properties.summary}' -o table
 }
 
+job_details() {
+  az rest --method get \
+    --url "$AA_BASE/jobs/$1?api-version=2024-10-23" \
+    --query 'properties.{status:status,exception:exception}' -o json
+}
+
 single_summary() {
   local output_file="$1" count
   count="$(grep -c '^SUMMARY ' "$output_file" || true)"
@@ -316,10 +328,14 @@ read:
 NO_READER_JOB="$(start_job false)"
 test "$(wait_job "$NO_READER_JOB")" = "Failed"
 job_streams "$NO_READER_JOB"
+job_details "$NO_READER_JOB" | tee "$EVIDENCE_DIR/no-reader.details.json"
 ```
 
 This class of failure occurs before the result and summary section, so the job has no `SUMMARY`
-line. Its failed status and Error stream are the evidence. A missing summary by itself is not
+line. For a vault-list failure, confirm `AuthorizationFailed`, HTTP 403, and
+`Microsoft.RecoveryServices/vaults/read` in the metadata exception or Error stream.
+The streams list can be empty, as it was in the 2026-09-06 test;
+the job's `properties.exception` then supplies the cause. A missing summary by itself is not
 evidence that the job completed safely. The sanitized live qualification happened to reach the
 vault-list call and receive HTTP 403; do not require that exact stage in every new tenant.
 
@@ -970,8 +986,9 @@ policy afterward: stopping the job does not undo an accepted ARM write.
 | Deployment quota/region failure | Inspect **Resource group → Deployments → failed deployment → Operation details**. Remove only this incomplete empty fixture through the guarded teardown, then restart with fresh names. If the Automation Account never existed, skip the two role-revoke commands after confirming no grant step ran. |
 | `AuthorizationFailed` on role definition or assignment | Check the operation named by the error and the operator's active RG permissions. Contributor and assignment-only RBAC authority cannot create custom roles. Keep the grant helper's rollback output. |
 | Publish exits without the expected hash message | Inspect the runbook draft/state and the local publication log. The pinned publisher suppresses some CLI errors; rerun the failing individual CLI command from `scripts/publish-runbook.sh` without its stderr redirection to see the cause. Do not start jobs until hash verification succeeds. |
-| Failed job has no `SUMMARY` | Read its Error stream; initialization/validation can fail before summaries. Step 4 deliberately expects failure, and Step 5 permits failed read-only readiness jobs within its deadline. Elsewhere, investigate before continuing. |
+| Failed job has no `SUMMARY` | Run `job_details "<job-name>"` and `job_streams "<job-name>"`; initialization/validation can fail before summaries, and streams can be empty. Step 4 deliberately expects failure, and Step 5 permits failed read-only readiness jobs within its deadline. Elsewhere, investigate before continuing. |
 | Reader/apply deadline expires, `writesUnknown > 0`, or seed polling fails | Revoke writer access, wait for the job/ARM operation to settle, and GET the exact policy. Compare non-tiering properties with `pre.json`. Do not rerun the full fixture or blindly repeat the seed/apply. |
+| Writer revoke reports failure after a successful deletion | Keep the successful apply/repeat evidence. Inspect the exact role-definition DELETE in Activity Log and compare the exact role GUID from that event in RG role lists and exact-definition GETs; transient 404/present responses can disagree. Keep the writer assignment absent, wait for repeated read agreement, then rerun only Step 9. Do not regrant, repeat apply, assume one 404 proves convergence, or remove the final absence checks. See the [live recovery evidence](LIVE-TEST-2026-09-06.md#recovery-from-inconsistent-role-deletion-reads). |
 | An unexpected `test`/`jq` failure | Keep the relevant JSON/output file and inspect it locally with `jq .`. Its difference from the required condition is the reason to stop. |
 
 For an interrupted canary, restore the exact `POLICY_ID`/`POLICY_URL` assignments at the start of

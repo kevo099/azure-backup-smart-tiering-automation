@@ -35,6 +35,8 @@ Read it before the first `Apply=true`.
   script-level parameter validation (whitespace names, unfiltered apply), managed-identity token
   acquisition, and the top-level vault-list call can all fail earlier. The live no-reader canary
   produced the expected vault-list 403 with a Failed job and Error stream but no `SUMMARY`.
+  In the 2026-09-06 test the stream list was empty; the same 403 was recorded in the job metadata's
+  `properties.exception`. Inspect both metadata and streams before identifying the cause.
 - `writesSubmitted` counts a PUT attempt, not a verified mutation. An exact apply with only the
   reader role reaches the policy, attempts the PUT, and fails with 403; expect
   `writesSubmitted=1`, `writesFailed=1`, `errors=1`, and `policiesWritten=0`. The policy is unchanged.
@@ -47,6 +49,12 @@ Read it before the first `Apply=true`.
 - `scripts/publish-runbook.sh` discovers the Automation Account's location. If you override
   `LOCATION`, it must be the account's actual region; quota-driven region changes should not leave a
   stale East US 2 publishing default.
+- Azure CLI 2.90.0 expanded `--content @file` by stripping the source's final newline during the
+  [2026-09-06 live walkthrough](LIVE-TEST-2026-09-06.md). The published runbook was valid but its
+  SHA-256 differed, so the publisher correctly failed. `az rest --body @file` shares the CLI's
+  file-expansion path. The corrected helper sends `curl --data-binary` to the documented
+  [draft-content PUT API](https://learn.microsoft.com/en-us/rest/api/automation/runbook-draft/replace-content?view=rest-automation-2024-10-23),
+  follows a 202 response, verifies draft bytes, then verifies the final published bytes and runtime.
 - Job streams are capped at 1 MiB per job; a subscription with many vaults is better audited per resource
   group, or ship job streams to Log Analytics.
 - Azure Automation stops cloud jobs after three hours; `JobTimeBudgetSeconds` (default 8400) stops new
@@ -64,6 +72,15 @@ Read it before the first `Apply=true`.
   Learn page names a different action; the manifest is authoritative.
 - Expect propagation lag and stale tokens after a grant: `AuthorizationFailed … refresh your credentials`
   can persist until the CLI token rolls over even when the assignment is correct.
+- Role-definition deletion reads can disagree temporarily. During the second
+  [2026-09-06 walkthrough](LIVE-TEST-2026-09-06.md), a successful DELETE was followed by
+  alternating present/absent CLI lists, raw ARM lists, and exact-definition GETs. The helper
+  correctly refused its final absence assertion, and the EXIT retry also failed before reads
+  converged. Keep the assignment absent; inspect the exact deletion in Activity Log; wait for
+  consistent reads and rerun final inspection without regranting or repeating apply. A single
+  HTTP 404 is insufficient evidence of stable read convergence. Microsoft describes
+  [custom-role deletion propagation](https://learn.microsoft.com/en-us/azure/role-based-access-control/custom-roles-portal#delete-a-custom-role)
+  as taking a few minutes, without a guaranteed deadline.
 - For `ScopeType=ResourceGroup`, use `scripts/discovery-role.sh`; its custom reader definition and
   assignment are both RG-scoped. The subscription reader template is intentionally broader and
   requires custom-role authority at its subscription assignable scope.
