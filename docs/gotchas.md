@@ -72,6 +72,15 @@ Read it before the first `Apply=true`.
   Learn page names a different action; the manifest is authoritative.
 - Expect propagation lag and stale tokens after a grant: `AuthorizationFailed … refresh your credentials`
   can persist until the CLI token rolls over even when the assignment is correct.
+- Role-definition deletion reads can disagree temporarily. During the second
+  [2026-09-06 walkthrough](LIVE-TEST-2026-09-06.md), a successful DELETE was followed by
+  alternating present/absent CLI lists, raw ARM lists, and exact-definition GETs. The helper
+  correctly refused its final absence assertion, and the EXIT retry also failed before reads
+  converged. Keep the assignment absent; inspect the exact deletion in Activity Log; wait for
+  consistent reads and rerun final inspection without regranting or repeating apply. A single
+  HTTP 404 is insufficient evidence of stable read convergence. Microsoft describes
+  [custom-role deletion propagation](https://learn.microsoft.com/en-us/azure/role-based-access-control/custom-roles-portal#delete-a-custom-role)
+  as taking a few minutes, without a guaranteed deadline.
 - For `ScopeType=ResourceGroup`, use `scripts/discovery-role.sh`; its custom reader definition and
   assignment are both RG-scoped. The subscription reader template is intentionally broader and
   requires custom-role authority at its subscription assignable scope.
