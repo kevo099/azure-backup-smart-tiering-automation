@@ -35,6 +35,8 @@ Read it before the first `Apply=true`.
   script-level parameter validation (whitespace names, unfiltered apply), managed-identity token
   acquisition, and the top-level vault-list call can all fail earlier. The live no-reader canary
   produced the expected vault-list 403 with a Failed job and Error stream but no `SUMMARY`.
+  In the 2026-09-06 test the stream list was empty; the same 403 was recorded in the job metadata's
+  `properties.exception`. Inspect both metadata and streams before identifying the cause.
 - `writesSubmitted` counts a PUT attempt, not a verified mutation. An exact apply with only the
   reader role reaches the policy, attempts the PUT, and fails with 403; expect
   `writesSubmitted=1`, `writesFailed=1`, `errors=1`, and `policiesWritten=0`. The policy is unchanged.
@@ -47,6 +49,12 @@ Read it before the first `Apply=true`.
 - `scripts/publish-runbook.sh` discovers the Automation Account's location. If you override
   `LOCATION`, it must be the account's actual region; quota-driven region changes should not leave a
   stale East US 2 publishing default.
+- Azure CLI 2.90.0 expanded `--content @file` by stripping the source's final newline during the
+  [2026-09-06 live walkthrough](LIVE-TEST-2026-09-06.md). The published runbook was valid but its
+  SHA-256 differed, so the publisher correctly failed. `az rest --body @file` shares the CLI's
+  file-expansion path. The corrected helper sends `curl --data-binary` to the documented
+  [draft-content PUT API](https://learn.microsoft.com/en-us/rest/api/automation/runbook-draft/replace-content?view=rest-automation-2024-10-23),
+  follows a 202 response, verifies draft bytes, then verifies the final published bytes and runtime.
 - Job streams are capped at 1 MiB per job; a subscription with many vaults is better audited per resource
   group, or ship job streams to Log Analytics.
 - Azure Automation stops cloud jobs after three hours; `JobTimeBudgetSeconds` (default 8400) stops new

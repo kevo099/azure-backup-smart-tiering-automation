@@ -91,6 +91,7 @@ infra/rbac/*.template.json                Portable custom-role definitions
 tests/StaticValidation.ps1                Parser and safety-marker checks
 tests/BehaviorHarness.ps1                 Behavioural harness: real runbook + mocked ARM (45 scenarios)
 scripts/publish-runbook.sh                Publish + link runtime + fetch-back hash check (release pipeline safe)
+tests/test_publish_runbook.py             Exact-byte upload and asynchronous-operation regressions
 scripts/discovery-role.sh                 Grant / revoke the RG-scoped discovery reader role
 scripts/ring-role.sh                      Grant / revoke the ring-scoped policy remediator role
 docs/replicate-in-azure.md                Step-by-step replication with the checkpoint expected at each step
@@ -119,7 +120,7 @@ intentionally excluded.
 - Subscription-level permission to create the new resource group; Contributor on the canary group
   for its resources and runbook; Owner or User Access Administrator on that group for custom-role
   definitions and assignments, including revocation. Contributor alone cannot write RBAC.
-- Linux or WSL with Bash 4 or newer, Git, `curl`, `jq`, and GNU coreutils (`sort -V` and `sha256sum`).
+- Linux or WSL with Bash 4 or newer, Git, `curl`, `jq`, Python 3, and GNU coreutils (`sort -V` and `sha256sum`).
   The role helpers also require Linux `/proc/sys/kernel/random/uuid`; native macOS is not supported.
 - Azure CLI 2.75.0 or newer with the experimental `automation` extension pinned
   to the qualified version `1.0.0b2`.
@@ -188,39 +189,21 @@ definitions/assignments. Each new vault also receives service-created default po
 
 ## Publish the runbook
 
-```bash
-az automation runbook create \
-  --subscription "<subscription-id>" \
-  --resource-group "<test-resource-group>" \
-  --automation-account-name "<automation-account>" \
-  --name Enable-SmartTiering \
-  --type PowerShell \
-  --location "<azure-region>"
-
-az automation runbook replace-content \
-  --subscription "<subscription-id>" \
-  --resource-group "<test-resource-group>" \
-  --automation-account-name "<automation-account>" \
-  --name Enable-SmartTiering \
-  --content @src/Enable-SmartTiering.ps1
-
-az automation runbook publish \
-  --subscription "<subscription-id>" \
-  --resource-group "<test-resource-group>" \
-  --automation-account-name "<automation-account>" \
-  --name Enable-SmartTiering
-```
-
-Link the runbook to the `PowerShell74` runtime environment (the Portal, or the Automation ARM API
-`PATCH .../runbooks/Enable-SmartTiering?api-version=2024-10-23` with
-`{"properties":{"runtimeEnvironment":"PowerShell74"}}`), and record the SHA-256 of the file you
-published so the job evidence can be tied to a commit. `scripts/publish-runbook.sh` does all of this in one
-go, discovers the Automation Account's Azure region unless `LOCATION` is explicitly supplied, and
-exits non-zero unless the fetch-back SHA-256 equals your local file:
+Use the publisher from the [walkthrough's pinned revision](docs/replicate-in-azure.md#0-prerequisites-and-source-pin).
+It creates the runbook when needed, uploads the exact file bytes, links `PowerShell74`, publishes,
+and compares the fetched draft and published SHA-256 with the local file. It discovers the
+Automation Account's region unless `LOCATION` is explicitly supplied, and exits nonzero if any
+content, publication-state, or runtime check fails.
 
 ```bash
 SUBSCRIPTION_ID="<sub>" RESOURCE_GROUP="<rg>" AUTOMATION_ACCOUNT="<account>" scripts/publish-runbook.sh
 ```
+
+Azure CLI `@file` expansion removed the source's final newline during the
+[2026-09-06 live test](docs/LIVE-TEST-2026-09-06.md). The helper therefore sends the documented
+[draft-content PUT](https://learn.microsoft.com/en-us/rest/api/automation/runbook-draft/replace-content?view=rest-automation-2024-10-23)
+with `curl --data-binary` and follows an asynchronous response before checking the bytes.
+Record the printed SHA-256 with the source commit.
 
 ## RBAC model
 
@@ -386,6 +369,7 @@ Then run the checks. The analyzer command below fails when it finds an error or 
 ```bash
 set -euo pipefail
 python3 scripts/check_public_content.py
+python3 -m unittest discover -s tests -p 'test_publish_runbook.py' -v
 pwsh -NonInteractive -NoProfile -File tests/StaticValidation.ps1
 pwsh -NonInteractive -NoProfile -File tests/BehaviorHarness.ps1
 pwsh -NonInteractive -NoProfile -Command '$findings = @(Invoke-ScriptAnalyzer -Path src/Enable-SmartTiering.ps1 -Severity Error,Warning -ErrorAction Stop); $findings | Format-Table -AutoSize; if ($findings.Count -gt 0) { exit 1 }'
