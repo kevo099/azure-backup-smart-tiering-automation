@@ -15,6 +15,14 @@ Read it before the first `Apply=true`.
 - A backup policy PUT is a **full-document write**. The runbook sends the policy back byte-for-byte with
   only the tiering block changed (text-preserving JSON), but a concurrent edit by someone else can still be
   overwritten when the API returns no ETag — see `AllowWriteWithoutETag` below.
+- Every policy write re-configures the items that policy protects. In the
+  [2026-09-27 live test](LIVE-TEST-2026-09-27.md), Azure started a `ConfigureBackup` job on the single
+  protected item right after the runbook's write; it completed in about 10 seconds. Microsoft's
+  [crash-consistent backup article](https://learn.microsoft.com/en-us/azure/backup/backup-azure-vms-agentless-multi-disk-crash-consistent#option-2-modify-the-backup-policy-to-change-from-applicationfile-system-consistent-backup-to-crash-consistent-backup)
+  shows a Configure backup job for each VM after a policy modification; only one item was observed
+  here, so per-item scaling was not measured. Keep the write inside the planned change window and
+  check the jobs afterwards, for example with
+  `az backup job list --resource-group <rg> --vault-name <vault> --operation ConfigureBackup`.
 
 ## Behaviour that looks like a bug but is the contract
 
@@ -49,6 +57,13 @@ Read it before the first `Apply=true`.
 - `scripts/publish-runbook.sh` discovers the Automation Account's location. If you override
   `LOCATION`, it must be the account's actual region; quota-driven region changes should not leave a
   stale East US 2 publishing default.
+- Free Trial, Azure for Students and Azure in Open subscriptions can create only one Automation
+  Account per region, and only in an allow-listed set of regions
+  ([Automation limits](https://learn.microsoft.com/en-us/azure/automation/automation-subscription-limits-faq#service-and-subscription-limits)).
+  `centralus`, the walkthrough's example, is not on that list; the
+  [2026-09-27 live test](LIVE-TEST-2026-09-27.md) placed its Automation Account in `eastus`. Choose an
+  allow-listed region that has no Automation Account in this subscription yet. For example, if the
+  combined showcase's account is still in `eastus`, use a different allow-listed region.
 - Azure CLI 2.90.0 expanded `--content @file` by stripping the source's final newline during the
   [2026-09-06 live walkthrough](LIVE-TEST-2026-09-06.md). The published runbook was valid but its
   SHA-256 differed, so the publisher correctly failed. `az rest --body @file` shares the CLI's
@@ -93,6 +108,20 @@ Read it before the first `Apply=true`.
 - `retainForInspection=true` changes lifecycle tags; it does not create a lock or make deletion
   impossible. The default replication handoff removes the writer and deliberately leaves the
   reader-only resources alive.
+- New Recovery Services vaults were observed with soft delete `AlwaysOn`, which cannot be disabled
+  (Microsoft's [secure-by-default soft delete](https://learn.microsoft.com/en-us/azure/backup/secure-by-default)).
+  This repository's fixture protects no items. If you extend a test to protect a real VM, stopping
+  protection with delete-data leaves a soft-deleted item in the vault for the soft-delete retention
+  period (14 days by default). Put that VM and its vault in a separate resource group so that the
+  walkthrough's Step 11 teardown or the combined guide's coordinated cleanup is not blocked; the
+  [2026-09-27 live test](LIVE-TEST-2026-09-27.md) used the showcase group and kept its VM vault for
+  the hold. Microsoft's pages differ on vault deletion: the
+  [vault-deletion article](https://learn.microsoft.com/en-us/azure/backup/backup-azure-delete-vault#before-you-start)
+  says a vault holding soft-deleted items can't be deleted until they are permanently removed, while
+  the secure-by-default article says a portal deletion moves the
+  vault into a soft-deleted state. Neither path was tested. Either way, expect the vault, or a
+  soft-deleted copy of it, to persist for the retention period. The same record lists two Azure CLI
+  traps met while protecting that VM ([CLI observations](LIVE-TEST-2026-09-27.md#cli-observations)).
 
 ## Reusing or modifying the code
 

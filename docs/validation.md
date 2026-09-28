@@ -1,6 +1,8 @@
 # Sanitized validation summary
 
 This file records what has been proven live and offline, by version. Identifiers are omitted.
+Dated sanitized records: [2026-09-06 standalone walkthrough](LIVE-TEST-2026-09-06.md) and
+[2026-09-27 new-tenant run with the first protected-policy write](LIVE-TEST-2026-09-27.md).
 
 ## 1.0 — live validation (2026-08-24)
 
@@ -46,7 +48,9 @@ The validation jobs used an exact custom policy-name filter, so none of the serv
 
 - Movement of a mature recovery point into Vault Archive.
 - V2/hourly policy mutation.
-- A policy protecting real workloads.
+- A policy protecting real workloads. (A single-item V1 daily policy protecting a disposable test VM
+  was first written live on 2026-09-27; production workloads remain unproven. See
+  [2026-09-27](#11--new-tenant-and-first-protected-policy-write-2026-09-27).)
 - SQL Server or SAP HANA `TierAfter` remediation.
 - Resource Guard/MUA flows.
 - Cross-tenant execution.
@@ -114,7 +118,9 @@ two-phase apply, fail-closed guards and verification all work in the real Automa
 sandbox against real ARM responses. What it still does not prove: the `202` asynchronous path (every
 live write completed synchronously with HTTP 200), tagged policies, V2/hourly writes, protected
 items, Resource Guard/MUA, throttling, or archive movement — those remain harness-only and are listed
-as required canaries in `docs/design-and-limitations.md`.
+as required canaries in `docs/design-and-limitations.md`. (A single-item protected policy was later
+written live on 2026-09-27, and that write took the `202` `Azure-AsyncOperation` path; see
+[2026-09-27](#11--new-tenant-and-first-protected-policy-write-2026-09-27).)
 
 ## 1.1 — fresh replica qualification (2026-08-31)
 
@@ -137,3 +143,31 @@ No tenant, subscription, resource, principal, role-assignment, or job identifier
 This fresh run confirms that the public fixture and publishing path can be reproduced in a new
 scope, including least-privilege cleanup and a retained read-only inspection state. It also corrects
 the earlier documentation assumption that every runbook failure emits a structured summary.
+
+## 1.1 — new tenant and first protected-policy write (2026-09-27)
+
+A brand-new tenant and Azure Free Trial subscription reproduced the
+[combined Policy + Automation guide](https://github.com/kevo099/azure-enterprise-policy-baseline/blob/main/docs/REPLICATE-POLICY-AUTOMATION.md)
+with the unchanged helper pin `03839a29b0fff02442d88a414d7ac32851d227c7` and runbook SHA-256
+`2cef45acc81b04a6bbcd62582db6f974102ae98f2de79231a90907f49a7dd555`. The Automation Account ran in
+East US because Free Trial subscriptions cannot create one in Central US. The empty-canary sequence
+matched earlier runs: a pre-RBAC 403 with no `SUMMARY`, reader readiness on the first job, audit
+`1/0/0`, apply `1/1/1` on the first attempt, repeat `0/0/0`, and writer removal.
+
+An optional extension then protected one private test VM with a V1 daily policy (24-month retention
+horizon) and ran the runbook against that policy. Every job used exact filters, `ExpectedMatches=1`
+and `MaxChanges=1`; counts are candidates/submitted/verified.
+
+| Phase | Result |
+|---|---|
+| Default guard, `MaxProtectedItemsPerPolicy=0` | `SkippedProtectedItemsExceedLimit`; `0/0/0` |
+| Limit raised to 1, no override | `SkippedNoConcurrencyToken`; `0/0/0`. The policy body carried no `eTag`; a separate check of the `backupPolicies` GET (`2025-08-01`) found none in the body or response headers |
+| `AllowWriteWithoutETag=true` in an exclusive test window | Audit `WouldEnableTierRecommended` `1/0/0`; apply `EnabledAndVerified` `1/1/1`; repeat `AlreadyCompliant` `0/0/0` |
+| Asynchronous path | The protected-policy PUT returned `202` and was followed through `Azure-AsyncOperation` to `Succeeded` before verification, the first recorded live exercise of that branch. The empty-canary apply in the same run completed synchronously with HTTP 200 |
+| Invariants | Non-tiering policy properties unchanged; `protectedItemsCount` stayed 1 and the item stayed on the same policy; temporary writer removed and verified absent |
+| Side effect | Azure started a `ConfigureBackup` job on the protected item right after the write |
+
+This is the first live write to a policy that protects a real (test) VM. The item's first backup was
+still running during the write, so the item held no completed recovery point yet. The run does not
+cover V2/hourly, tagged or multi-item policies, mature recovery points, archive movement, restore,
+or estate scale. Full record: [LIVE-TEST-2026-09-27.md](LIVE-TEST-2026-09-27.md).

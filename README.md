@@ -9,8 +9,10 @@ tracking of the asynchronous update, and full post-write verification.
 > **Status:** 1.1 is live-qualified on the same empty-canary fixture as 1.0 (2026-08-25: unfiltered
 > audit, `DoNotTier` → `TierRecommended` apply, idempotent repeat, and every fail-closed guard) and is
 > validated offline by a 45-scenario behavioural harness that executes the real runbook against a
-> mocked ARM transport. See [CHANGELOG.md](CHANGELOG.md) and [docs/validation.md](docs/validation.md) for exactly
-> what has and has not been proven live.
+> mocked ARM transport. See [docs/validation.md](docs/validation.md) for exactly what has and has not
+> been proven live, and [CHANGELOG.md](CHANGELOG.md) for what changed in 1.1. The
+> [2026-09-27 new-tenant record](docs/LIVE-TEST-2026-09-27.md) adds the first live write to a
+> single-item policy protecting a real test VM, made with the `AllowWriteWithoutETag` override.
 
 ## Start here
 
@@ -98,6 +100,7 @@ docs/replicate-in-azure.md                Step-by-step replication with the chec
 docs/gotchas.md                           Everything that bit us — read before the first Apply=true
 docs/design-and-limitations.md            Method comparison, limitations, hardening status
 docs/validation.md                        Sanitised live-test evidence (1.0) and 1.1 verification
+docs/LIVE-TEST-*.md                       Dated sanitized live-test records (2026-09-06, 2026-09-27)
 docs/inspection-guide.md                  Azure Portal inspection path
 CHANGELOG.md                              What changed in 1.1 and why
 .github/workflows/validate.yml            Static checks, harness, PSScriptAnalyzer, RBAC and Bicep CI
@@ -331,18 +334,36 @@ If the group is shared with the Policy showcase, use the combined guide's coordi
   apply → idempotent repeat produced `1/0/0` → `1/1/1` → `0/0/0` candidates/submitted/verified,
   non-tiering pre/post hashes matched, and the writer was removed while the reader-only showcase was
   retained. The no-reader 403 also exposed the pre-summary failure boundary documented above.
+- **1.1, standalone walkthrough (2026-09-06):** the corrected walkthrough passed exact publication,
+  no-reader denial, RG-reader readiness, exact zero-item seed, audit, reader-only write denial,
+  bounded apply, idempotent repeat, unchanged non-tiering properties and the strict reader-only
+  invariants, with recovery from inconsistent role-deletion reads. See
+  [docs/LIVE-TEST-2026-09-06.md](docs/LIVE-TEST-2026-09-06.md).
+- **1.1, new tenant and protected policy (2026-09-27):** in a brand-new tenant on a Free Trial
+  subscription, with Automation in East US, the combined guide repeated the empty-canary
+  `1/0/0` → `1/1/1` → `0/0/0` cycle. An optional extension then targeted one V1 daily policy
+  protecting a single real test VM. Both protected-policy guards held: `SkippedProtectedItemsExceedLimit`,
+  then `SkippedNoConcurrencyToken` because no ETag was returned. With `AllowWriteWithoutETag=true` in an
+  exclusive test window, the apply verified `1/1/1` with non-tiering properties unchanged, and the repeat
+  wrote nothing. That PUT returned `202` and was followed through `Azure-AsyncOperation` to `Succeeded`,
+  the first recorded live exercise of the asynchronous branch. See
+  [docs/LIVE-TEST-2026-09-27.md](docs/LIVE-TEST-2026-09-27.md).
 
 ## Important limitations
 
-- Only empty Azure VM V1/daily policies have been write-tested live. V2/hourly, tagged, and
-  policies protecting real workloads need their own canaries before use; the defaults refuse
-  protected policies until `MaxProtectedItemsPerPolicy` is raised.
+- Live writes cover empty Azure VM V1/daily policies and one V1/daily policy protecting a single
+  real test VM, written with `AllowWriteWithoutETag=true` in an exclusive test window
+  ([2026-09-27](docs/LIVE-TEST-2026-09-27.md)). V2/hourly, tagged, and multi-item policies,
+  policies whose items already hold recovery points, and estate-scale runs need their own canaries
+  before use; the defaults refuse protected policies until `MaxProtectedItemsPerPolicy` is raised.
 - SQL Server and SAP HANA policies are skipped.
-- The API returned no ETag during validation, so concurrency protection is the structural
-  pre-write comparison plus an operator-enforced exclusive change window. Do not run two apply
-  jobs against the same vault at once.
+- The API returned no ETag during validation (reconfirmed on 2026-09-27 for a protected policy: none
+  in the response body or headers), so concurrency protection is the structural pre-write comparison
+  plus an operator-enforced exclusive change window. Do not run two apply jobs against the same vault
+  at once.
 - The runbook issues no DELETE, but a policy update is re-applied to every item the policy
-  protects, and a retention change can shorten recovery-point lifetime — which is why the write is
+  protects (observed on 2026-09-27 as a `ConfigureBackup` job on the protected item right after
+  the write), and a retention change can shorten recovery-point lifetime — which is why the write is
   verified to change nothing but `ArchivedRP`. Recovery points moved to the archive tier carry a
   180-day early-deletion charge. Enabling Smart Tiering does not
   guarantee immediate recovery-point movement; Azure's archive eligibility rules still apply.

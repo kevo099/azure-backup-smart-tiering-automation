@@ -53,6 +53,8 @@ use [Recovery and troubleshooting](#recovery-and-troubleshooting) before repeati
   registers them before the canary deployment.
 - A region with Automation Account quota. If a fresh deployment fails on quota, inspect and remove
   that incomplete resource group before starting again in another region; do not update it in place.
+  Free Trial, Azure for Students and Azure in Open subscriptions are limited to one Automation
+  Account per region in an allow-listed set of regions; see [gotchas](gotchas.md#azure-automation-platform).
 
 If tools are missing, first follow Microsoft's [Azure CLI installation](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli-linux)
 and [PowerShell installation](https://learn.microsoft.com/en-us/powershell/scripting/install/install-ubuntu)
@@ -119,7 +121,17 @@ Step 0 instead of repurposing a working checkout.
 Sign in, explicitly select the intended tenant and subscription, then define local-only names.
 Replace the three angle-bracket values. Use 4–12 lowercase letters/digits for the suffix; keep it
 unique to this run. `centralus` is an example, subject to your subscription's quota and policy.
+Free Trial and Azure for Students subscriptions allow one Automation Account per region, and only in
+an [allow-listed set of regions](https://learn.microsoft.com/en-us/azure/automation/automation-subscription-limits-faq#service-and-subscription-limits)
+that excludes `centralus`; the 2026-09-27 combined-guide run placed its Automation Account in
+`eastus` ([record](LIVE-TEST-2026-09-27.md)). Pick an allow-listed region that holds no other
+Automation Account in this subscription; if the combined showcase's account is still in `eastus`,
+pick another.
 If the login cannot open a browser, use `az login --tenant "$TENANT_ID" --use-device-code` instead.
+Security defaults [block device-code sign-in](https://learn.microsoft.com/en-us/entra/fundamentals/security-defaults)
+wherever they are enabled, and Microsoft states that all new tenants block it from July 1, 2026
+(`AADSTS530035` in the 2026-09-27 combined-guide run). In such a tenant, run the sign-in from a
+session that can open a browser.
 
 ```bash
 TENANT_ID="<tenant-id>"
@@ -160,7 +172,11 @@ raw job output, resource IDs, principal IDs, or rendered role definitions.
 ## 1. Deploy the fresh fixture once
 
 Create a new resource group, prove it is empty, then deploy the safe compliant fixture. Set
-`retainForInspection=true` so its tags describe the intended leave-alive lifecycle.
+`retainForInspection=true` so its tags describe the intended leave-alive lifecycle. In a brand-new
+subscription only `Microsoft.Authorization` may be registered; on 2026-09-27 each provider
+registration took roughly 75 seconds or more
+([record](LIVE-TEST-2026-09-27.md#environment-and-source-pins)), so the provider loop below can take
+a few minutes.
 
 ```bash
 for provider in Microsoft.Authorization Microsoft.Automation Microsoft.RecoveryServices; do
