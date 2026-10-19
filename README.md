@@ -14,6 +14,13 @@ tracking of the asynchronous update, and full post-write verification.
 > [2026-09-27 new-tenant record](docs/LIVE-TEST-2026-09-27.md) adds the first live write to a
 > single-item policy protecting a real test VM, made with the `AllowWriteWithoutETag` override.
 
+> **Part of an Azure governance suite.** The [suite overview](https://github.com/kevo099/azure-enterprise-policy-baseline/blob/main/docs/SUITE.md)
+> lists every component, which tool to use when, and the live-test evidence.
+
+> **Runtime notice:** Microsoft ends support for PowerShell 7.4 on 2026-11-10, and Azure Automation follows that
+> lifecycle. PowerShell 7.6 runtime environments are generally available. The fixture and helpers below still
+> create and link a 7.4 runtime; see [docs/validation.md](docs/validation.md) for the 7.6 compatibility result.
+
 ## Start here
 
 | Your goal | Follow this path |

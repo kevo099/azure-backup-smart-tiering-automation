@@ -1,6 +1,15 @@
 # Changelog
 
-## 1.1.0 — 2026-08-25 (unreleased; branch `v1.1/tribunal-hardening`)
+## Unreleased
+
+Runbook bytes are unchanged (`src/Enable-SmartTiering.ps1`, SHA-256 `2cef45ac…`, `runbookVersion` 1.1.0).
+
+Changes on `main` after the v1.1.0 tag: the byte-preserving publisher (`scripts/publish-runbook.sh`) with its
+regression tests, the discovery-reader and ring-role helpers, the step-by-step replication guide and its
+interruption recovery, the 2026-09-06 and 2026-09-27 live records, and (this change) the suite link, the
+PowerShell 7.4 end-of-support notice, pay-as-you-go Automation account limits and the 2026-10-19 health check.
+
+## 1.1.0 — 2026-08-25
 
 Hardening release driven by an adversarial multi-model review of 1.0 (thirteen GPT-5.6 runs,
 one Claude cross-check, an executable offline harness, and a live audit of the 1.0 runbook against
