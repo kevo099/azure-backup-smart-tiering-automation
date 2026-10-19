@@ -171,3 +171,19 @@ This is the first live write to a policy that protects a real (test) VM. The ite
 still running during the write, so the item held no completed recovery point yet. The run does not
 cover V2/hourly, tagged or multi-item policies, mature recovery points, archive movement, restore,
 or estate scale. Full record: [LIVE-TEST-2026-09-27.md](LIVE-TEST-2026-09-27.md).
+
+## 1.1 — health check and PowerShell 7.6 compatibility (2026-10-19)
+
+In the same new tenant, three weeks after the 2026-09-27 run, one read-only, unfiltered resource-group audit
+(`Apply=false`) of the retained showcase completed on the `PowerShell74` runtime: three vaults, twelve backup
+policies classified (nine VM policies and three log-backup policies skipped as unsupported workloads), both
+canaries `AlreadyCompliant`, zero writes and zero errors. The managed-identity token path, runtime and API
+version `2025-08-01` still worked unchanged.
+
+The unchanged runbook bytes (SHA-256 `2cef45ac…`) were then published byte-for-byte to a second runbook linked
+to a new **PowerShell 7.6** runtime environment (no packages) in the same account and run with the same
+read-only parameters. The job `Completed` with the same classification for the vaults that still existed
+(two vaults, six VM policies matched, zero candidates, zero writes, zero errors). The temporary runbook and
+runtime environment were removed afterwards. This shows the runbook runs on PowerShell 7.6 without code
+changes; the fixture and helpers still create the 7.4 runtime until a 7.6 default is released.
+

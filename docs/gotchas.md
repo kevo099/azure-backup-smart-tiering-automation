@@ -57,7 +57,10 @@ Read it before the first `Apply=true`.
 - `scripts/publish-runbook.sh` discovers the Automation Account's location. If you override
   `LOCATION`, it must be the account's actual region; quota-driven region changes should not leave a
   stale East US 2 publishing default.
-- Free Trial, Azure for Students and Azure in Open subscriptions can create only one Automation
+- Automation Account limits depend on the subscription offer
+  ([Automation limits](https://learn.microsoft.com/en-us/azure/automation/automation-subscription-limits-faq#service-and-subscription-limits)):
+  Enterprise and CSP subscriptions allow 10 per region, pay-as-you-go and similar offers allow 2 per region,
+  each in any supported public region. Free Trial, Azure for Students and Azure in Open subscriptions can create only one Automation
   Account per region, and only in an allow-listed set of regions
   ([Automation limits](https://learn.microsoft.com/en-us/azure/automation/automation-subscription-limits-faq#service-and-subscription-limits)).
   `centralus`, the walkthrough's example, is not on that list; the
