@@ -12,9 +12,10 @@ Read it before the first `Apply=true`.
   archive-eligible recovery point (≥ 3 months old with ≥ 6 months left). Daily-only policies are rejected
   by ARM with `400 BMSUserErrorInvalidPolicyInput` — 1.0 recorded that as an `Error` row, 1.1 skips them
   with `SkippedNoArchiveEligibility` and never sends the PUT.
-- A backup policy PUT is a **full-document write**. The runbook sends the policy back byte-for-byte with
-  only the tiering block changed (text-preserving JSON), but a concurrent edit by someone else can still be
-  overwritten when the API returns no ETag — see `AllowWriteWithoutETag` below.
+- A backup policy PUT is a **full-document write**. The runbook preserves JSON values, including
+  date-like strings, removes read-only members, changes the archive-tier block and serializes the whole
+  policy. Verification compares structure and values, not original whitespace or byte layout. A concurrent
+  edit can still be overwritten when the API returns no ETag — see `AllowWriteWithoutETag` below.
 - Every policy write re-configures the items that policy protects. In the
   [2026-09-27 live test](LIVE-TEST-2026-09-27.md), Azure started a `ConfigureBackup` job on the single
   protected item right after the runbook's write; it completed in about 10 seconds. Microsoft's
@@ -130,8 +131,9 @@ Read it before the first `Apply=true`.
 
 - Run the harness non-interactively (`pwsh -NonInteractive -NoProfile -File tests/BehaviorHarness.ps1`).
 - `ConvertFrom-Json` rewrites date-like strings into `DateTime`; a tag value such as `2026-08-25` would be
-  sent back reformatted. The runbook keeps every value as text with `System.Text.Json.Nodes` — keep it that
-  way.
+  sent back reformatted. The runbook preserves JSON value types with
+  `System.Text.Json.Nodes`, so date-like JSON strings remain strings while
+  numbers, booleans, arrays, objects and null keep their JSON meaning.
 - `System.Text.Json` nodes are enumerable: returning one from a PowerShell function unrolls it unless you
   use the comma operator (`return , $node`).
 - `HttpResponseException` inherits from `HttpRequestException`; only treat an exception as transient when

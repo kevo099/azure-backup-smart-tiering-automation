@@ -10,7 +10,10 @@ Smart Tiering is configured on each child backup policy:
 Microsoft.RecoveryServices/vaults/backupPolicies
 ```
 
-It is not a vault-wide, resource-group-wide, or subscription-wide switch. Those broader scopes are discovery scopes only.
+It is not a vault-wide, resource-group-wide, or subscription-wide switch. `ScopeType` selects the vaults
+and policies to discover. An explicitly permitted, bounded apply can then update matching policies one
+by one; it still changes each child policy separately. Subscription discovery does not by itself
+authorize an unfiltered apply: exact filters or `AllowUnfilteredApply=true` and the other guards apply.
 
 ## Why the current implementation uses REST
 

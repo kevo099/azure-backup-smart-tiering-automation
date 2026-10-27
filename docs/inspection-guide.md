@@ -4,6 +4,11 @@ This repository contains no tenant-specific Azure Portal links or resource IDs. 
 Policy + Azure Automation inspection path, use the
 [canonical combined guide](https://github.com/kevo099/azure-enterprise-policy-baseline/blob/main/docs/REPLICATE-POLICY-AUTOMATION.md).
 
+The expected counts below describe the standalone **empty-canary handoff**, after its audit/apply/repeat
+sequence. The optional [single-protected-VM test](LIVE-TEST-2026-09-27.md) has different item counts and
+additional guard jobs; compare a deployment with its own recorded scope rather than forcing it to match
+this empty fixture.
+
 From an authenticated workstation:
 
 1. Open the Azure Portal and select the subscription containing the deployment.

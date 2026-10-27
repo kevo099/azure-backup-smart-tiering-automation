@@ -14,6 +14,10 @@ tracking of the asynchronous update, and full post-write verification.
 > [2026-09-27 new-tenant record](docs/LIVE-TEST-2026-09-27.md) adds the first live write to a
 > single-item policy protecting a real test VM, made with the `AllowWriteWithoutETag` override.
 
+> **Which tiering product?** This changes an Azure VM **backup policy** so Azure can archive eligible
+> recovery points. [Blob Storage smart tier](https://github.com/kevo099/azure-storage-smart-tier-automation)
+> changes a **storage account's default blob access tier** and has different eligibility and costs.
+
 > **Part of an Azure governance suite.** The [suite overview](https://github.com/kevo099/azure-enterprise-policy-baseline/blob/main/docs/SUITE.md)
 > lists every component, which tool to use when, and the live-test evidence.
 
